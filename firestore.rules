@@ -57,27 +57,32 @@ service cloud.firestore {
     }
 
     match /vocabulary_topics/{topicId} {
-      allow read: if isAuthenticated();
+      allow read: if true;
       allow write: if isAdmin();
     }
 
     match /vocabulary_words/{wordId} {
-      allow read: if isAuthenticated();
+      allow read: if true;
       allow write: if isAdmin();
     }
 
     match /grammar_topics/{topicId} {
-      allow read: if isAuthenticated();
+      allow read: if true;
       allow write: if isAdmin();
     }
 
     match /grammar_lessons/{lessonId} {
-      allow read: if isAuthenticated();
+      allow read: if true;
       allow write: if isAdmin();
     }
 
     match /grammar_questions/{questionId} {
-      allow read: if isAuthenticated();
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /reading_topics/{topicId} {
+      allow read: if true;
       allow write: if isAdmin();
     }
 

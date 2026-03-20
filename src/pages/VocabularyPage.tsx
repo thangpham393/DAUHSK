@@ -14,6 +14,7 @@ interface Topic {
   title: string;
   count: number;
   level: string;
+  wordCount?: number;
   isPro?: boolean;
   isNew30?: boolean;
 }

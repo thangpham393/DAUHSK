@@ -79,11 +79,12 @@ const AdminPage = () => {
   const [user, setUser] = useState<User | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'grammar' | 'vocabulary'>('grammar');
+  const [activeTab, setActiveTab] = useState<'grammar' | 'vocabulary' | 'reading'>('grammar');
   const [activeSubTab, setActiveSubTab] = useState<'topics' | 'words'>('topics');
   const [selectedTopic, setSelectedTopic] = useState<VocabularyTopic | null>(null);
   const [grammarTopics, setGrammarTopics] = useState<GrammarTopic[]>([]);
   const [vocabTopics, setVocabTopics] = useState<VocabularyTopic[]>([]);
+  const [readingTopics, setReadingTopics] = useState<any[]>([]);
   const [words, setWords] = useState<VocabularyWord[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<any>(null);
@@ -152,9 +153,21 @@ const AdminPage = () => {
       }
     );
 
+    const unsubReading = onSnapshot(
+      query(collection(db, 'reading_topics'), orderBy('createdAt', 'desc')), 
+      (snapshot) => {
+        setReadingTopics(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      },
+      (error) => {
+        console.error("Reading topics snapshot failed", error);
+        setMessage({ type: 'error', text: 'Lỗi tải dữ liệu bài đọc: ' + error.message });
+      }
+    );
+
     return () => {
       unsubGrammar();
       unsubVocab();
+      unsubReading();
     };
   }, [isAdmin]);
 
@@ -204,6 +217,8 @@ const AdminPage = () => {
     let collectionName = '';
     if (activeTab === 'grammar') {
       collectionName = 'grammar_topics';
+    } else if (activeTab === 'reading') {
+      collectionName = 'reading_topics';
     } else {
       collectionName = activeSubTab === 'topics' ? 'vocabulary_topics' : 'vocabulary_words';
     }
@@ -262,6 +277,8 @@ const AdminPage = () => {
     let collectionName = '';
     if (activeTab === 'grammar') {
       collectionName = 'grammar_topics';
+    } else if (activeTab === 'reading') {
+      collectionName = 'reading_topics';
     } else {
       collectionName = activeSubTab === 'topics' ? 'vocabulary_topics' : 'vocabulary_words';
     }
@@ -361,6 +378,16 @@ const AdminPage = () => {
             <BookOpen size={18} />
             Từ vựng
           </button>
+          <button 
+            onClick={() => setActiveTab('reading')}
+            className={cn(
+              "w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all",
+              activeTab === 'reading' ? "bg-hsk-primary text-white" : "text-slate-500 hover:bg-slate-50"
+            )}
+          >
+            <BookText size={18} />
+            Bài đọc
+          </button>
         </nav>
 
         <div className="p-4 border-t border-slate-100">
@@ -400,10 +427,12 @@ const AdminPage = () => {
               <div>
                 <h1 className="text-2xl font-bold text-slate-800">
                   {activeTab === 'grammar' ? 'Quản lý Ngữ pháp' : 
+                   activeTab === 'reading' ? 'Quản lý Bài đọc' :
                    activeSubTab === 'topics' ? 'Quản lý Bộ từ vựng' : `Từ vựng: ${selectedTopic?.title}`}
                 </h1>
                 <p className="text-slate-500 text-sm">
                   {activeTab === 'grammar' ? 'Thêm, sửa hoặc xóa các chủ điểm học tập.' :
+                   activeTab === 'reading' ? 'Quản lý các bài luyện đọc.' :
                    activeSubTab === 'topics' ? 'Quản lý các bộ từ vựng theo chủ đề.' : 'Thêm từ vựng vào bộ này.'}
                 </p>
               </div>
@@ -438,28 +467,28 @@ const AdminPage = () => {
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-100">
                   <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider">
-                    {activeTab === 'grammar' || activeSubTab === 'topics' ? 'Tiêu đề' : 'Từ vựng'}
+                    {activeTab === 'grammar' || activeSubTab === 'topics' || activeTab === 'reading' ? 'Tiêu đề' : 'Từ vựng'}
                   </th>
                   <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider">
-                    {activeTab === 'grammar' || activeSubTab === 'topics' ? 'Cấp độ' : 'Phiên âm'}
+                    {activeTab === 'grammar' || activeSubTab === 'topics' || activeTab === 'reading' ? 'Cấp độ' : 'Phiên âm'}
                   </th>
                   <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider">
-                    {activeTab === 'grammar' || activeSubTab === 'topics' ? 'Mô tả' : 'Nghĩa'}
+                    {activeTab === 'grammar' || activeSubTab === 'topics' || activeTab === 'reading' ? 'Mô tả' : 'Nghĩa'}
                   </th>
                   <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider text-right">Thao tác</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
-                {(activeTab === 'grammar' ? grammarTopics : activeSubTab === 'topics' ? vocabTopics : words).map((item: any) => (
+                {(activeTab === 'grammar' ? grammarTopics : activeTab === 'reading' ? readingTopics : activeSubTab === 'topics' ? vocabTopics : words).map((item: any) => (
                   <tr key={item.id} className="hover:bg-slate-50/50 transition-colors">
                     <td className="px-6 py-4">
                       <div className="font-bold text-slate-800">{item.title || item.word}</div>
-                      {(activeTab === 'grammar' || activeSubTab === 'topics') && item.isPro && (
+                      {(activeTab === 'grammar' || activeSubTab === 'topics' || activeTab === 'reading') && item.isPro && (
                         <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded uppercase">PRO</span>
                       )}
                     </td>
                     <td className="px-6 py-4">
-                      {activeTab === 'grammar' || activeSubTab === 'topics' ? (
+                      {activeTab === 'grammar' || activeSubTab === 'topics' || activeTab === 'reading' ? (
                         <div className="flex items-center gap-2">
                           <span className="text-xs font-bold text-hsk-primary bg-sky-50 px-2 py-1 rounded uppercase">
                             {item.level}
@@ -513,7 +542,7 @@ const AdminPage = () => {
                 ))}
               </tbody>
             </table>
-            {(activeTab === 'grammar' ? grammarTopics : activeSubTab === 'topics' ? vocabTopics : words).length === 0 && (
+            {(activeTab === 'grammar' ? grammarTopics : activeTab === 'reading' ? readingTopics : activeSubTab === 'topics' ? vocabTopics : words).length === 0 && (
               <div className="py-20 text-center text-slate-400">
                 Chưa có dữ liệu. Hãy nhấn "Thêm mới" để bắt đầu.
               </div>
@@ -528,13 +557,13 @@ const AdminPage = () => {
           <div className="bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="p-6 border-b border-slate-100 flex items-center justify-between">
               <h2 className="text-xl font-bold text-slate-800">
-                {editingItem ? 'Chỉnh sửa' : 'Thêm mới'} {activeTab === 'grammar' ? 'Ngữ pháp' : activeSubTab === 'topics' ? 'Bộ từ vựng' : 'Từ vựng'}
+                {editingItem ? 'Chỉnh sửa' : 'Thêm mới'} {activeTab === 'grammar' ? 'Ngữ pháp' : activeTab === 'reading' ? 'Bài đọc' : activeSubTab === 'topics' ? 'Bộ từ vựng' : 'Từ vựng'}
               </h2>
               <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-600">×</button>
             </div>
             
             <form onSubmit={handleSave} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
-              {activeTab === 'grammar' || activeSubTab === 'topics' ? (
+              {activeTab === 'grammar' || activeSubTab === 'topics' || activeTab === 'reading' ? (
                 <>
                   <div>
                     <label className="block text-sm font-bold text-slate-700 mb-1">Tiêu đề</label>
@@ -560,7 +589,7 @@ const AdminPage = () => {
                         ))}
                       </select>
                     </div>
-                    {(activeTab === 'grammar' || activeSubTab === 'topics') && (
+                    {(activeTab === 'grammar' || activeSubTab === 'topics' || activeTab === 'reading') && (
                       <div className="flex flex-col gap-2 pt-4">
                         <div className="flex items-center gap-2">
                           <input 
@@ -598,7 +627,19 @@ const AdminPage = () => {
                     />
                   </div>
 
-                  {activeTab === 'vocabulary' && (
+                  {activeTab === 'vocabulary' && activeSubTab === 'topics' && (
+                    <div>
+                      <label className="block text-sm font-bold text-slate-700 mb-1">Số lượng từ</label>
+                      <input 
+                        type="number" 
+                        value={formData.wordCount || 0}
+                        onChange={(e) => setFormData({...formData, wordCount: parseInt(e.target.value) || 0})}
+                        className="w-full px-4 py-2 bg-slate-50 border border-slate-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-hsk-primary"
+                      />
+                    </div>
+                  )}
+
+                  {(activeTab === 'vocabulary' || activeTab === 'reading') && (
                     <div>
                       <label className="block text-sm font-bold text-slate-700 mb-1">Link ảnh (URL)</label>
                       <input 
@@ -608,6 +649,50 @@ const AdminPage = () => {
                         className="w-full px-4 py-2 bg-slate-50 border border-slate-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-hsk-primary"
                       />
                     </div>
+                  )}
+
+                  {activeTab === 'reading' && (
+                    <>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-bold text-slate-700 mb-1">Tác giả</label>
+                          <input 
+                            type="text" 
+                            value={formData.author || ''}
+                            onChange={(e) => setFormData({...formData, author: e.target.value})}
+                            className="w-full px-4 py-2 bg-slate-50 border border-slate-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-hsk-primary"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-bold text-slate-700 mb-1">Thời gian đọc (phút)</label>
+                          <input 
+                            type="text" 
+                            value={formData.time || ''}
+                            onChange={(e) => setFormData({...formData, time: e.target.value})}
+                            className="w-full px-4 py-2 bg-slate-50 border border-slate-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-hsk-primary"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-bold text-slate-700 mb-1">Thể loại</label>
+                        <input 
+                          type="text" 
+                          value={formData.category || ''}
+                          onChange={(e) => setFormData({...formData, category: e.target.value})}
+                          className="w-full px-4 py-2 bg-slate-50 border border-slate-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-hsk-primary"
+                          placeholder="Ví dụ: Đời sống, Văn hóa..."
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-bold text-slate-700 mb-1">Nội dung bài đọc (Markdown)</label>
+                        <textarea 
+                          rows={10}
+                          value={formData.content || ''}
+                          onChange={(e) => setFormData({...formData, content: e.target.value})}
+                          className="w-full px-4 py-2 bg-slate-50 border border-slate-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-hsk-primary font-mono text-sm"
+                        />
+                      </div>
+                    </>
                   )}
                 </>
               ) : (
