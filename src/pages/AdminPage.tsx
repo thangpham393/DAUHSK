@@ -57,10 +57,10 @@ interface GrammarTopic {
 interface GrammarQuestion {
   id: string;
   topicId: string;
-  type: 'multiple-choice' | 'reorder';
-  word: string; // For multiple-choice: the prompt. For reorder: the full correct sentence.
+  type: 'multiple-choice' | 'reorder' | 'translation';
+  word: string; // For multiple-choice: the prompt. For reorder: the full correct sentence. For translation: the source sentence.
   options?: string[]; // For multiple-choice: [A, B, C, D]. For reorder: [word1, word2, ...].
-  correctAnswer: string; // For multiple-choice: A/B/C/D. For reorder: the full correct sentence.
+  correctAnswer: string; // For multiple-choice: A/B/C/D. For reorder: the full correct sentence. For translation: correct answers separated by '|'.
   explanation?: string;
 }
 
@@ -262,6 +262,10 @@ const AdminPage = () => {
     
     try {
       const { id, ...cleanData } = formData;
+      
+      if (activeTab === 'grammar' && activeSubTab === 'questions') {
+        cleanData.type = cleanData.type || 'multiple-choice';
+      }
       
       if (editingItem) {
         await updateDoc(doc(db, collectionName, editingItem.id), {
@@ -560,7 +564,7 @@ const AdminPage = () => {
                           )}
                         </div>
                       ) : (
-                        <span className="text-sm text-slate-600 font-bold">{item.correct || item.pinyin}</span>
+                        <span className="text-sm text-slate-600 font-bold">{item.correctAnswer || item.correct || item.pinyin}</span>
                       )}
                     </td>
                     <td className="px-6 py-4">
@@ -710,10 +714,37 @@ const AdminPage = () => {
                         >
                           <option value="multiple-choice">Trắc nghiệm</option>
                           <option value="reorder">Sắp xếp câu</option>
+                          <option value="translation">Dịch câu</option>
                         </select>
                       </div>
 
-                      {formData.type === 'reorder' ? (
+                      {formData.type === 'translation' ? (
+                        <>
+                          <div>
+                            <label className="block text-sm font-bold text-slate-700 mb-1">Câu gốc cần dịch</label>
+                            <input 
+                              required
+                              type="text" 
+                              value={formData.word || ''}
+                              onChange={(e) => setFormData({...formData, word: e.target.value})}
+                              className="w-full px-4 py-2 bg-slate-50 border border-slate-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-hsk-primary"
+                              placeholder="Ví dụ: Tôi đi đến trường."
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-bold text-slate-700 mb-1">Các đáp án đúng (Cách nhau bằng dấu |)</label>
+                            <input 
+                              required
+                              type="text" 
+                              value={formData.correctAnswer || ''}
+                              onChange={(e) => setFormData({...formData, correctAnswer: e.target.value})}
+                              className="w-full px-4 py-2 bg-slate-50 border border-slate-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-hsk-primary"
+                              placeholder="Ví dụ: 我去学校|我到学校去"
+                            />
+                            <p className="text-[10px] text-slate-400 mt-1 italic">Học viên nhập đúng 1 trong các đáp án này sẽ được tính điểm.</p>
+                          </div>
+                        </>
+                      ) : formData.type === 'reorder' ? (
                         <>
                           <div>
                             <label className="block text-sm font-bold text-slate-700 mb-1">Câu hoàn chỉnh (Ví dụ: 我去学校。)</label>
