@@ -49,8 +49,19 @@ interface GrammarTopic {
   title: string;
   level: string;
   description: string;
+  content?: string;
   isPro: boolean;
   count: number;
+}
+
+interface GrammarQuestion {
+  id: string;
+  topicId: string;
+  type: 'multiple-choice' | 'reorder';
+  word: string; // For multiple-choice: the prompt. For reorder: the full correct sentence.
+  options?: string[]; // For multiple-choice: [A, B, C, D]. For reorder: [word1, word2, ...].
+  correctAnswer: string; // For multiple-choice: A/B/C/D. For reorder: the full correct sentence.
+  explanation?: string;
 }
 
 interface VocabularyTopic {
@@ -80,9 +91,11 @@ const AdminPage = () => {
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'grammar' | 'vocabulary' | 'reading'>('grammar');
-  const [activeSubTab, setActiveSubTab] = useState<'topics' | 'words'>('topics');
+  const [activeSubTab, setActiveSubTab] = useState<'topics' | 'words' | 'questions'>('topics');
   const [selectedTopic, setSelectedTopic] = useState<VocabularyTopic | null>(null);
+  const [selectedGrammarTopic, setSelectedGrammarTopic] = useState<GrammarTopic | null>(null);
   const [grammarTopics, setGrammarTopics] = useState<GrammarTopic[]>([]);
+  const [grammarQuestions, setGrammarQuestions] = useState<GrammarQuestion[]>([]);
   const [vocabTopics, setVocabTopics] = useState<VocabularyTopic[]>([]);
   const [readingTopics, setReadingTopics] = useState<any[]>([]);
   const [words, setWords] = useState<VocabularyWord[]>([]);
@@ -171,31 +184,30 @@ const AdminPage = () => {
     };
   }, [isAdmin]);
 
+  // Fetch words or questions when topic changes
   useEffect(() => {
-    if (!selectedTopic) {
-      setWords([]);
-      return;
+    if (!isAdmin) return;
+    
+    let unsubscribe: () => void = () => {};
+
+    if (activeTab === 'vocabulary' && activeSubTab === 'words' && selectedTopic) {
+      unsubscribe = onSnapshot(
+        query(collection(db, 'vocabulary_words'), where('topicId', '==', selectedTopic.id), orderBy('createdAt', 'asc')),
+        (snapshot) => {
+          setWords(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as VocabularyWord)));
+        }
+      );
+    } else if (activeTab === 'grammar' && activeSubTab === 'questions' && selectedGrammarTopic) {
+      unsubscribe = onSnapshot(
+        query(collection(db, 'grammar_questions'), where('topicId', '==', selectedGrammarTopic.id), orderBy('createdAt', 'asc')),
+        (snapshot) => {
+          setGrammarQuestions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as GrammarQuestion)));
+        }
+      );
     }
 
-    const q = query(
-      collection(db, 'vocabulary_words'),
-      where('topicId', '==', selectedTopic.id),
-      orderBy('createdAt', 'asc')
-    );
-
-    const unsubscribe = onSnapshot(
-      q, 
-      (snapshot) => {
-        setWords(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as VocabularyWord)));
-      },
-      (error) => {
-        console.error("Vocabulary words snapshot failed", error);
-        setMessage({ type: 'error', text: 'Lỗi tải danh sách từ vựng: ' + error.message });
-      }
-    );
-
     return () => unsubscribe();
-  }, [selectedTopic]);
+  }, [isAdmin, activeTab, activeSubTab, selectedTopic, selectedGrammarTopic]);
 
   const handleLogin = async () => {
     try {
@@ -209,6 +221,31 @@ const AdminPage = () => {
 
   const handleLogout = () => signOut(auth);
 
+  const insertMarkdown = (tag: string, type: 'wrap' | 'prefix' = 'wrap') => {
+    const textarea = document.getElementById('grammar-content') as HTMLTextAreaElement;
+    if (!textarea) return;
+
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const text = formData.content || '';
+    const selectedText = text.substring(start, end);
+    
+    let newText = '';
+    if (type === 'wrap') {
+      newText = text.substring(0, start) + tag + selectedText + tag + text.substring(end);
+    } else {
+      newText = text.substring(0, start) + tag + selectedText + text.substring(end);
+    }
+    
+    setFormData({ ...formData, content: newText });
+    
+    // Reset focus and selection
+    setTimeout(() => {
+      textarea.focus();
+      textarea.setSelectionRange(start + tag.length, end + tag.length);
+    }, 0);
+  };
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isSaving) return;
@@ -216,7 +253,7 @@ const AdminPage = () => {
     setIsSaving(true);
     let collectionName = '';
     if (activeTab === 'grammar') {
-      collectionName = 'grammar_topics';
+      collectionName = activeSubTab === 'topics' ? 'grammar_topics' : 'grammar_questions';
     } else if (activeTab === 'reading') {
       collectionName = 'reading_topics';
     } else {
@@ -239,9 +276,12 @@ const AdminPage = () => {
           updatedAt: serverTimestamp()
         };
 
-        if (activeTab === 'grammar') {
+        if (activeTab === 'grammar' && activeSubTab === 'topics') {
           dataToSave.count = 0;
           dataToSave.isPro = formData.isPro || false;
+        } else if (activeTab === 'grammar' && activeSubTab === 'questions') {
+          if (!selectedGrammarTopic) throw new Error("Chưa chọn chủ điểm ngữ pháp");
+          dataToSave.topicId = selectedGrammarTopic.id;
         } else if (activeSubTab === 'topics') {
           dataToSave.wordCount = 0;
           dataToSave.isPro = formData.isPro || false;
@@ -252,10 +292,14 @@ const AdminPage = () => {
 
         await addDoc(collection(db, collectionName), dataToSave);
         
-        // Update word count if adding a word
+        // Update counts
         if (activeTab === 'vocabulary' && activeSubTab === 'words' && selectedTopic) {
           await updateDoc(doc(db, 'vocabulary_topics', selectedTopic.id), {
             wordCount: increment(1)
+          });
+        } else if (activeTab === 'grammar' && activeSubTab === 'questions' && selectedGrammarTopic) {
+          await updateDoc(doc(db, 'grammar_topics', selectedGrammarTopic.id), {
+            count: increment(1)
           });
         }
 
@@ -276,7 +320,7 @@ const AdminPage = () => {
     if (!window.confirm('Bạn có chắc chắn muốn xóa?')) return;
     let collectionName = '';
     if (activeTab === 'grammar') {
-      collectionName = 'grammar_topics';
+      collectionName = activeSubTab === 'topics' ? 'grammar_topics' : 'grammar_questions';
     } else if (activeTab === 'reading') {
       collectionName = 'reading_topics';
     } else {
@@ -286,10 +330,14 @@ const AdminPage = () => {
     try {
       await deleteDoc(doc(db, collectionName, id));
       
-      // Update word count if deleting a word
+      // Update counts
       if (activeTab === 'vocabulary' && activeSubTab === 'words' && selectedTopic) {
         await updateDoc(doc(db, 'vocabulary_topics', selectedTopic.id), {
           wordCount: increment(-1)
+        });
+      } else if (activeTab === 'grammar' && activeSubTab === 'questions' && selectedGrammarTopic) {
+        await updateDoc(doc(db, 'grammar_topics', selectedGrammarTopic.id), {
+          count: increment(-1)
         });
       }
 
@@ -359,7 +407,11 @@ const AdminPage = () => {
         
         <nav className="flex-grow p-4 space-y-2">
           <button 
-            onClick={() => setActiveTab('grammar')}
+            onClick={() => {
+              setActiveTab('grammar');
+              setActiveSubTab('topics');
+              setSelectedGrammarTopic(null);
+            }}
             className={cn(
               "w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all",
               activeTab === 'grammar' ? "bg-hsk-primary text-white" : "text-slate-500 hover:bg-slate-50"
@@ -369,7 +421,11 @@ const AdminPage = () => {
             Ngữ pháp
           </button>
           <button 
-            onClick={() => setActiveTab('vocabulary')}
+            onClick={() => {
+              setActiveTab('vocabulary');
+              setActiveSubTab('topics');
+              setSelectedTopic(null);
+            }}
             className={cn(
               "w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all",
               activeTab === 'vocabulary' ? "bg-hsk-primary text-white" : "text-slate-500 hover:bg-slate-50"
@@ -379,7 +435,10 @@ const AdminPage = () => {
             Từ vựng
           </button>
           <button 
-            onClick={() => setActiveTab('reading')}
+            onClick={() => {
+              setActiveTab('reading');
+              setActiveSubTab('topics');
+            }}
             className={cn(
               "w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all",
               activeTab === 'reading' ? "bg-hsk-primary text-white" : "text-slate-500 hover:bg-slate-50"
@@ -413,11 +472,12 @@ const AdminPage = () => {
         <div className="max-w-6xl mx-auto">
           <div className="flex items-center justify-between mb-8">
             <div className="flex items-center gap-4">
-              {activeTab === 'vocabulary' && activeSubTab === 'words' && (
+              {((activeTab === 'vocabulary' && activeSubTab === 'words') || (activeTab === 'grammar' && activeSubTab === 'questions')) && (
                 <button 
                   onClick={() => {
                     setActiveSubTab('topics');
                     setSelectedTopic(null);
+                    setSelectedGrammarTopic(null);
                   }}
                   className="p-2 hover:bg-slate-100 rounded-full transition-all"
                 >
@@ -426,12 +486,12 @@ const AdminPage = () => {
               )}
               <div>
                 <h1 className="text-2xl font-bold text-slate-800">
-                  {activeTab === 'grammar' ? 'Quản lý Ngữ pháp' : 
+                  {activeTab === 'grammar' ? (activeSubTab === 'topics' ? 'Quản lý Ngữ pháp' : `Bài tập: ${selectedGrammarTopic?.title}`) : 
                    activeTab === 'reading' ? 'Quản lý Bài đọc' :
                    activeSubTab === 'topics' ? 'Quản lý Bộ từ vựng' : `Từ vựng: ${selectedTopic?.title}`}
                 </h1>
                 <p className="text-slate-500 text-sm">
-                  {activeTab === 'grammar' ? 'Thêm, sửa hoặc xóa các chủ điểm học tập.' :
+                  {activeTab === 'grammar' ? (activeSubTab === 'topics' ? 'Thêm, sửa hoặc xóa các chủ điểm học tập.' : 'Thêm bài tập cho chủ điểm này.') :
                    activeTab === 'reading' ? 'Quản lý các bài luyện đọc.' :
                    activeSubTab === 'topics' ? 'Quản lý các bộ từ vựng theo chủ đề.' : 'Thêm từ vựng vào bộ này.'}
                 </p>
@@ -467,28 +527,28 @@ const AdminPage = () => {
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-100">
                   <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider">
-                    {activeTab === 'grammar' || activeSubTab === 'topics' || activeTab === 'reading' ? 'Tiêu đề' : 'Từ vựng'}
+                    {activeTab === 'grammar' && activeSubTab === 'topics' || activeTab === 'vocabulary' && activeSubTab === 'topics' || activeTab === 'reading' ? 'Tiêu đề' : 'Câu hỏi / Từ vựng'}
                   </th>
                   <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider">
-                    {activeTab === 'grammar' || activeSubTab === 'topics' || activeTab === 'reading' ? 'Cấp độ' : 'Phiên âm'}
+                    {activeTab === 'grammar' && activeSubTab === 'topics' || activeTab === 'vocabulary' && activeSubTab === 'topics' || activeTab === 'reading' ? 'Cấp độ' : 'Đáp án / Phiên âm'}
                   </th>
                   <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider">
-                    {activeTab === 'grammar' || activeSubTab === 'topics' || activeTab === 'reading' ? 'Mô tả' : 'Nghĩa'}
+                    {activeTab === 'grammar' && activeSubTab === 'topics' || activeTab === 'vocabulary' && activeSubTab === 'topics' || activeTab === 'reading' ? 'Mô tả' : 'Giải thích / Nghĩa'}
                   </th>
                   <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider text-right">Thao tác</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
-                {(activeTab === 'grammar' ? grammarTopics : activeTab === 'reading' ? readingTopics : activeSubTab === 'topics' ? vocabTopics : words).map((item: any) => (
+                {(activeTab === 'grammar' ? (activeSubTab === 'topics' ? grammarTopics : grammarQuestions) : activeTab === 'reading' ? readingTopics : activeSubTab === 'topics' ? vocabTopics : words).map((item: any) => (
                   <tr key={item.id} className="hover:bg-slate-50/50 transition-colors">
                     <td className="px-6 py-4">
                       <div className="font-bold text-slate-800">{item.title || item.word}</div>
-                      {(activeTab === 'grammar' || activeSubTab === 'topics' || activeTab === 'reading') && item.isPro && (
+                      {(activeTab === 'grammar' && activeSubTab === 'topics' || activeTab === 'vocabulary' && activeSubTab === 'topics' || activeTab === 'reading') && item.isPro && (
                         <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded uppercase">PRO</span>
                       )}
                     </td>
                     <td className="px-6 py-4">
-                      {activeTab === 'grammar' || activeSubTab === 'topics' || activeTab === 'reading' ? (
+                      {activeTab === 'grammar' && activeSubTab === 'topics' || activeTab === 'vocabulary' && activeSubTab === 'topics' || activeTab === 'reading' ? (
                         <div className="flex items-center gap-2">
                           <span className="text-xs font-bold text-hsk-primary bg-sky-50 px-2 py-1 rounded uppercase">
                             {item.level}
@@ -500,14 +560,26 @@ const AdminPage = () => {
                           )}
                         </div>
                       ) : (
-                        <span className="text-sm text-slate-600">{item.pinyin}</span>
+                        <span className="text-sm text-slate-600 font-bold">{item.correct || item.pinyin}</span>
                       )}
                     </td>
                     <td className="px-6 py-4">
-                      <p className="text-sm text-slate-500 line-clamp-1 max-w-xs">{item.description || item.meaning}</p>
+                      <p className="text-sm text-slate-500 line-clamp-1 max-w-xs">{item.explanation || item.description || item.meaning}</p>
                     </td>
                     <td className="px-6 py-4 text-right">
                       <div className="flex items-center justify-end gap-2">
+                        {activeTab === 'grammar' && activeSubTab === 'topics' && (
+                          <button 
+                            onClick={() => {
+                              setSelectedGrammarTopic(item);
+                              setActiveSubTab('questions');
+                            }}
+                            className="p-2 text-slate-400 hover:text-hsk-primary hover:bg-sky-50 rounded-lg transition-all flex items-center gap-1 text-xs font-bold"
+                          >
+                            <BookOpen size={18} />
+                            Bài tập
+                          </button>
+                        )}
                         {activeTab === 'vocabulary' && activeSubTab === 'topics' && (
                           <button 
                             onClick={() => {
@@ -626,6 +698,172 @@ const AdminPage = () => {
                       className="w-full px-4 py-2 bg-slate-50 border border-slate-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-hsk-primary"
                     />
                   </div>
+
+                  {activeTab === 'grammar' && activeSubTab === 'questions' && (
+                    <>
+                      <div>
+                        <label className="block text-sm font-bold text-slate-700 mb-1">Loại câu hỏi</label>
+                        <select 
+                          value={formData.type || 'multiple-choice'}
+                          onChange={(e) => setFormData({...formData, type: e.target.value as any})}
+                          className="w-full px-4 py-2 bg-slate-50 border border-slate-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-hsk-primary"
+                        >
+                          <option value="multiple-choice">Trắc nghiệm</option>
+                          <option value="reorder">Sắp xếp câu</option>
+                        </select>
+                      </div>
+
+                      {formData.type === 'reorder' ? (
+                        <>
+                          <div>
+                            <label className="block text-sm font-bold text-slate-700 mb-1">Câu hoàn chỉnh (Ví dụ: 我去学校。)</label>
+                            <input 
+                              required
+                              type="text" 
+                              value={formData.correctAnswer || ''}
+                              onChange={(e) => setFormData({...formData, correctAnswer: e.target.value, word: e.target.value})}
+                              className="w-full px-4 py-2 bg-slate-50 border border-slate-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-hsk-primary"
+                              placeholder="Nhập câu đúng hoàn chỉnh"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-bold text-slate-700 mb-1">Các từ/cụm từ (Cách nhau bằng dấu phẩy)</label>
+                            <input 
+                              required
+                              type="text" 
+                              value={formData.options?.join(', ') || ''}
+                              onChange={(e) => setFormData({...formData, options: e.target.value.split(',').map(s => s.trim()).filter(s => s)}) }
+                              className="w-full px-4 py-2 bg-slate-50 border border-slate-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-hsk-primary"
+                              placeholder="Ví dụ: 我, 去, 学校, 。"
+                            />
+                            <p className="text-[10px] text-slate-400 mt-1 italic">Học viên sẽ thấy các từ này bị xáo trộn để sắp xếp lại.</p>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div>
+                            <label className="block text-sm font-bold text-slate-700 mb-1">Câu hỏi (Ví dụ: 我___去学校。)</label>
+                            <input 
+                              required
+                              type="text" 
+                              value={formData.word || ''}
+                              onChange={(e) => setFormData({...formData, word: e.target.value})}
+                              className="w-full px-4 py-2 bg-slate-50 border border-slate-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-hsk-primary"
+                              placeholder="Sử dụng ___ để biểu thị chỗ trống"
+                            />
+                          </div>
+                          <div className="grid grid-cols-2 gap-4">
+                            {['A', 'B', 'C', 'D'].map((opt, idx) => (
+                              <div key={opt}>
+                                <label className="block text-sm font-bold text-slate-700 mb-1">Đáp án {opt}</label>
+                                <input 
+                                  required
+                                  type="text" 
+                                  value={formData.options?.[idx] || ''}
+                                  onChange={(e) => {
+                                    const newOptions = [...(formData.options || ['', '', '', ''])];
+                                    newOptions[idx] = e.target.value;
+                                    setFormData({...formData, options: newOptions});
+                                  }}
+                                  className="w-full px-4 py-2 bg-slate-50 border border-slate-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-hsk-primary"
+                                />
+                              </div>
+                            ))}
+                          </div>
+                          <div>
+                            <label className="block text-sm font-bold text-slate-700 mb-1">Đáp án đúng (A/B/C/D)</label>
+                            <select 
+                              required
+                              value={formData.correctAnswer || 'A'}
+                              onChange={(e) => setFormData({...formData, correctAnswer: e.target.value})}
+                              className="w-full px-4 py-2 bg-slate-50 border border-slate-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-hsk-primary"
+                            >
+                              <option value="A">A</option>
+                              <option value="B">B</option>
+                              <option value="C">C</option>
+                              <option value="D">D</option>
+                            </select>
+                          </div>
+                        </>
+                      )}
+                      <div>
+                        <label className="block text-sm font-bold text-slate-700 mb-1">Giải thích</label>
+                        <input 
+                          type="text" 
+                          value={formData.explanation || ''}
+                          onChange={(e) => setFormData({...formData, explanation: e.target.value})}
+                          className="w-full px-4 py-2 bg-slate-50 border border-slate-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-hsk-primary"
+                        />
+                      </div>
+                    </>
+                  )}
+
+                  {activeTab === 'grammar' && activeSubTab === 'topics' && (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="block text-sm font-bold text-slate-700">Nội dung bài học (Markdown)</label>
+                        <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg">
+                          <button 
+                            type="button"
+                            onClick={() => insertMarkdown('**')}
+                            className="p-1.5 hover:bg-white rounded text-xs font-bold text-slate-600 transition-colors"
+                            title="Bold"
+                          >
+                            B
+                          </button>
+                          <button 
+                            type="button"
+                            onClick={() => insertMarkdown('*')}
+                            className="p-1.5 hover:bg-white rounded text-xs italic text-slate-600 transition-colors"
+                            title="Italic"
+                          >
+                            I
+                          </button>
+                          <button 
+                            type="button"
+                            onClick={() => insertMarkdown('### ', 'prefix')}
+                            className="p-1.5 hover:bg-white rounded text-xs font-bold text-slate-600 transition-colors"
+                            title="Heading"
+                          >
+                            H
+                          </button>
+                          <button 
+                            type="button"
+                            onClick={() => insertMarkdown('- ', 'prefix')}
+                            className="p-1.5 hover:bg-white rounded text-xs font-bold text-slate-600 transition-colors"
+                            title="List"
+                          >
+                            •
+                          </button>
+                          <button 
+                            type="button"
+                            onClick={() => insertMarkdown('`')}
+                            className="p-1.5 hover:bg-white rounded text-xs font-mono text-slate-600 transition-colors"
+                            title="Code"
+                          >
+                            &lt;&gt;
+                          </button>
+                          <button 
+                            type="button"
+                            onClick={() => insertMarkdown('> ', 'prefix')}
+                            className="p-1.5 hover:bg-white rounded text-xs font-bold text-slate-600 transition-colors"
+                            title="Quote"
+                          >
+                            "
+                          </button>
+                        </div>
+                      </div>
+                      <textarea 
+                        id="grammar-content"
+                        rows={20}
+                        value={formData.content || ''}
+                        onChange={(e) => setFormData({...formData, content: e.target.value})}
+                        className="w-full px-4 py-2 bg-slate-50 border border-slate-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-hsk-primary font-mono text-sm leading-relaxed"
+                        placeholder="Nhập nội dung bài học bằng Markdown..."
+                      />
+                      <p className="text-[10px] text-slate-400 italic">Mẹo: Sử dụng Markdown để định dạng bài viết (Tiêu đề, danh sách, in đậm...)</p>
+                    </div>
+                  )}
 
                   {activeTab === 'vocabulary' && activeSubTab === 'topics' && (
                     <div>

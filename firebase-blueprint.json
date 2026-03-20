@@ -65,6 +65,26 @@
         "repetitionCount": { "type": "number" }
       },
       "required": ["userId", "wordId", "topicId", "rating"]
+    },
+    "ReadingTopic": {
+      "title": "Reading Topic",
+      "description": "A reading comprehension article",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "level": { "type": "string", "enum": ["HSK 1", "HSK 2", "HSK 3", "HSK 4", "HSK 5", "HSK 6"] },
+        "category": { "type": "string" },
+        "author": { "type": "string" },
+        "time": { "type": "string" },
+        "rating": { "type": "number" },
+        "image": { "type": "string" },
+        "description": { "type": "string" },
+        "content": { "type": "string" },
+        "isPro": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "level", "content"]
     }
   },
   "firestore": {
@@ -87,6 +107,10 @@
     "grammar_questions": {
       "schema": "GrammarQuestion",
       "description": "Practice questions for grammar topics"
+    },
+    "reading_topics": {
+      "schema": "ReadingTopic",
+      "description": "Reading comprehension articles"
     },
     "user_vocabulary_progress": {
       "schema": "UserVocabularyProgress",
