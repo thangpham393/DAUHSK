@@ -1,0 +1,96 @@
+{
+  "entities": {
+    "VocabularyTopic": {
+      "title": "Vocabulary Topic",
+      "description": "A collection of vocabulary words grouped by topic",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "level": { "type": "string", "enum": ["HSK 1", "HSK 2", "HSK 3", "HSK 4", "HSK 5", "HSK 6"] },
+        "wordCount": { "type": "number" },
+        "image": { "type": "string" },
+        "description": { "type": "string" }
+      },
+      "required": ["title", "level"]
+    },
+    "GrammarTopic": {
+      "title": "Grammar Topic",
+      "description": "A grammar point with theory and practice",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "level": { "type": "string", "enum": ["HSK 1", "HSK 2", "HSK 3", "HSK 4", "HSK 5", "HSK 6"] },
+        "description": { "type": "string" },
+        "isPro": { "type": "boolean" },
+        "count": { "type": "number" }
+      },
+      "required": ["title", "level"]
+    },
+    "GrammarLesson": {
+      "title": "Grammar Lesson Content",
+      "description": "Detailed theory for a grammar topic",
+      "type": "object",
+      "properties": {
+        "topicId": { "type": "string" },
+        "title": { "type": "string" },
+        "intro": { "type": "string" },
+        "example": { "type": "object" },
+        "sections": { "type": "array" }
+      }
+    },
+    "GrammarQuestion": {
+      "title": "Grammar Practice Question",
+      "description": "A multiple choice question for grammar practice",
+      "type": "object",
+      "properties": {
+        "topicId": { "type": "string" },
+        "word": { "type": "string" },
+        "options": { "type": "array" },
+        "correct": { "type": "string" }
+      }
+    },
+    "UserVocabularyProgress": {
+      "title": "User Vocabulary Progress",
+      "description": "Tracks a user's progress on a specific vocabulary word",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "wordId": { "type": "string" },
+        "topicId": { "type": "string" },
+        "rating": { "type": "string", "enum": ["again", "hard", "good", "easy"] },
+        "lastStudiedAt": { "type": "string", "format": "date-time" },
+        "nextReviewAt": { "type": "string", "format": "date-time" },
+        "repetitionCount": { "type": "number" }
+      },
+      "required": ["userId", "wordId", "topicId", "rating"]
+    }
+  },
+  "firestore": {
+    "vocabulary_topics": {
+      "schema": "VocabularyTopic",
+      "description": "Main topics for vocabulary"
+    },
+    "vocabulary_words": {
+      "schema": "object",
+      "description": "Individual vocabulary words"
+    },
+    "grammar_topics": {
+      "schema": "GrammarTopic",
+      "description": "Main topics for grammar"
+    },
+    "grammar_lessons": {
+      "schema": "GrammarLesson",
+      "description": "Theory content for grammar topics"
+    },
+    "grammar_questions": {
+      "schema": "GrammarQuestion",
+      "description": "Practice questions for grammar topics"
+    },
+    "user_vocabulary_progress": {
+      "schema": "UserVocabularyProgress",
+      "description": "Individual word progress for users"
+    }
+  }
+}
