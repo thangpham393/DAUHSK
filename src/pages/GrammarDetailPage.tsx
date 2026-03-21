@@ -3,8 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import { 
   ChevronLeft, 
-  PanelRightClose, 
-  PanelRightOpen, 
+  PanelLeftClose, 
+  PanelLeftOpen, 
   BookOpen, 
   Play, 
   Clock, 
@@ -246,7 +246,7 @@ export default function GrammarDetailPage({ initialTab = 'lesson' }: { initialTa
             onClick={() => setIsSidebarOpen(!isSidebarOpen)}
             className="flex items-center gap-2 text-slate-500 hover:text-slate-800 text-sm font-medium transition-colors"
           >
-            {isSidebarOpen ? <PanelRightClose size={18} /> : <PanelRightOpen size={18} />}
+            {isSidebarOpen ? <PanelLeftClose size={18} /> : <PanelLeftOpen size={18} />}
             <span>{isSidebarOpen ? "Ẩn sidebar" : "Hiện sidebar"}</span>
           </button>
           <button 
@@ -258,10 +258,10 @@ export default function GrammarDetailPage({ initialTab = 'lesson' }: { initialTa
         </div>
       </div>
 
-      <div className="flex flex-grow overflow-hidden flex-row-reverse">
+      <div className="flex flex-grow overflow-hidden flex-row">
         {/* Sidebar */}
         <aside className={cn(
-          "bg-white border-l border-slate-100 transition-all duration-300 overflow-y-auto",
+          "bg-white border-r border-slate-100 transition-all duration-300 overflow-y-auto shrink-0",
           isSidebarOpen ? "w-80" : "w-0 opacity-0 pointer-events-none"
         )}>
           <div className="p-6">
